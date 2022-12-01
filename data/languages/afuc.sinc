@@ -99,6 +99,8 @@ define token instr(32)
   opc_r = (26, 31)
   opc = (27, 31)
   rep = (26, 26)
+
+  instr_bits = (0, 31)
 ;
 
 attach variables [
@@ -712,4 +714,8 @@ define pcodeop unk38;
 :nop is opc_r = 0x0 & pad = 0x1000000 { }
 :nop [pad] is opc_r = 0x0 & pad { }
 @endif
+
+define pcodeop badcode;
+
+:badcode is instr_bits = 0xfbadc0de { badcode(); goto inst_start; }
 
