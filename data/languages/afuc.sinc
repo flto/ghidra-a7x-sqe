@@ -67,6 +67,9 @@ define context decodestate
 ;
 
 define token instr(32)
+  alu_uimm12 = (0, 11) hex
+  alu_opc_ext = (12, 15)
+
   alu_uimm = (0, 15) hex
   movi_shift = (21, 25)
 
@@ -330,6 +333,8 @@ CNTLDATASRC: control_data_src is control_data_src { export control_data_src; }
 
 ALUSRC2: ALU2SRC2 is ALU2SRC2 & opc = 0x13 { export ALU2SRC2; }
 
+ALUSRC2: alu_uimm12 is alu_uimm12 & opc = 0x12 { local tmp:4 = alu_uimm12; export tmp; }
+
 ALUSRC2: alu_uimm is alu_uimm { local tmp:4 = alu_uimm; export tmp; }
 
 # --- Instructions --
@@ -337,37 +342,37 @@ ALUSRC2: alu_uimm is alu_uimm { local tmp:4 = alu_uimm; export tmp; }
 # special-case mov $addr, const where it's known what const does
 
 # setting registers
-repinstr: "mov" alui_control_dst, alu_uimm is alui_control_dst & alui_control_dst = 0x1d & opc = 0x11 &
+repinstr: "mov" alui_control_dst, alu_uimm is alui_control_dst & alui_control_dst = 0x1d & opc = 0x0e &
    alu_uimm & movi_shift = 0
   [ addrknown = 1; knownaddr = alu_uimm; globalset(inst_next, addrknown); globalset(inst_next, knownaddr); ] { }
 
 # setting curdataptr_lo 
-repinstr: "mov" alui_control_dst, 0xa0 << 24 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x11 &
+repinstr: "mov" alui_control_dst, 0xa0 << 24 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x0e &
   alu_uimm = 0xa0 & movi_shift = 24
   [ addrknown = 1; knownaddr = 0xa0 << 24; globalset(inst_next, addrknown); globalset(inst_next, knownaddr); ] { }
 
 # setting curdataptr_hi
-repinstr: "mov" alui_control_dst, 0xa1 << 24 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x11 &
+repinstr: "mov" alui_control_dst, 0xa1 << 24 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x0e &
   alu_uimm = 0xa1 & movi_shift = 24
   [ addrknown = 1; knownaddr = 0xa1 << 24; globalset(inst_next, addrknown); globalset(inst_next, knownaddr); ] { }
 
 # storing to memory, unprotected (kernel)
-repinstr: "mov" alui_control_dst, 0xa2 << 24 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x11 &
+repinstr: "mov" alui_control_dst, 0xa2 << 24 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x0e &
   alu_uimm = 0xa2 & movi_shift = 24
   [ addrknown = 1; knownaddr = 0xa2 << 24; globalset(inst_next, addrknown); globalset(inst_next, knownaddr); ] { }
 
 # storing to memory, protected (userspace)
-repinstr: "mov" alui_control_dst, 0xa204 << 16 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x11 &
+repinstr: "mov" alui_control_dst, 0xa204 << 16 is alui_control_dst & alui_control_dst = 0x1d & opc = 0x0e &
   alu_uimm = 0xa204 & movi_shift = 16
   [ addrknown = 1; knownaddr = 0xa204 << 16; globalset(inst_next, addrknown); globalset(inst_next, knownaddr); ] { }
 
 # generic mov constant
 
-repinstr: "mov" ALUICNTLDST, alu_uimm << movi_shift is ALUICNTLDST & alu_uimm & movi_shift & opc = 0x11 {
+repinstr: "mov" ALUICNTLDST, alu_uimm << movi_shift is ALUICNTLDST & alu_uimm & movi_shift & opc = 0x0e {
   ALUICNTLDST = alu_uimm << movi_shift;
 }
 
-repinstr: "mov" ALUICNTLDST, alu_uimm is ALUICNTLDST & alu_uimm & movi_shift = 0 & opc = 0x11 {
+repinstr: "mov" ALUICNTLDST, alu_uimm is ALUICNTLDST & alu_uimm & movi_shift = 0 & opc = 0x0e {
   ALUICNTLDST = alu_uimm;
 }
 
@@ -414,23 +419,23 @@ aluinstr: "not" ALUDST, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x08 {
   ALUDST = ~ALUSRC2;
 }
 
-aluinstr: "shl" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x09 {
+aluinstr: "shl" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x12 {
   ALUDST = SRC1 << ALUSRC2;
 }
 
-aluinstr: "ushr" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0a {
+aluinstr: "ushr" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x13 {
   ALUDST = SRC1 >> ALUSRC2;
 }
 
-aluinstr: "ishr" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0b {
+aluinstr: "ishr" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x14 {
   ALUDST = SRC1 s>> ALUSRC2;
 }
 
-aluinstr: "rot" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0c {
+aluinstr: "rot" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x15 {
   ALUDST = (SRC1 << ALUSRC2) | (SRC1 >> (32 - ALUSRC2));
 }
 
-aluinstr: "mul8" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0d {
+aluinstr: "mul8" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0c {
   local _src1:1 = SRC1(0);
   local _src2:1 = ALUSRC2(0);
   local src1_ext:2 = zext(_src1);
@@ -439,7 +444,7 @@ aluinstr: "mul8" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0
   ALUDST = zext(tmp);
 }
 
-aluinstr: "min" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0e {
+aluinstr: "min" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0a {
   local tmp = SRC1;
   if (tmp < ALUSRC2) goto <out>;
   tmp = ALUSRC2;
@@ -447,7 +452,7 @@ aluinstr: "min" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0e
   ALUDST = tmp;
 }
 
-aluinstr: "max" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0f {
+aluinstr: "max" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0b {
   local tmp = SRC1;
   if (tmp > ALUSRC2) goto <out>;
   tmp = ALUSRC2;
@@ -455,7 +460,7 @@ aluinstr: "max" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0f
   ALUDST = tmp;
 }
 
-aluinstr: "cmp" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x10 {
+aluinstr: "cmp" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0d {
   local tmp:4 = 0x00;
   if (SRC1 > ALUSRC2) goto <out>;
   tmp = 0x2b;
@@ -465,13 +470,35 @@ aluinstr: "cmp" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x10
   ALUDST = tmp;
 }
 
-define pcodeop alu14;
-
-# TODO: figure out what this does and rename
-# probably log2 (find highest one bit) or ctz
-aluinstr: "alu14" ALUDST, ALUSRC2 is ALUDST & src1 = 0 & ALUSRC2 & alu_op = 0x14 {
-  ALUDST = alu14(ALUSRC2);
+aluinstr: "bic" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x09 {
+  ALUDST = SRC1 & ~ALUSRC2;
 }
+
+aluinstr: "setbit" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x16 {
+  local bit = ALUSRC2 >> 1;
+  local val = ALUSRC2 & 1;
+  ALUDST = (SRC1 & ~(1 << bit)) | (val << bit);
+}
+
+aluinstr: "ubfx" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x17 {
+  local lo = ALUSRC2 & 31;
+  local hi = ALUSRC2 >> 5;
+  local mask = (((1 << (hi-lo)) << 1) - 1);
+  ALUDST = (SRC1 >> lo) & mask;
+}
+
+define pcodeop alu18;
+define pcodeop alu19;
+
+aluinstr: "alu18" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x18 {
+  ALUDST = alu18(SRC1, ALUSRC2);
+}
+
+aluinstr: "alu19" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x19 {
+  ALUDST = alu19(SRC1, ALUSRC2);
+}
+
+repinstr: aluinstr is aluinstr & opc = 0x12 & alu_opc_ext [ alu_op = alu_opc_ext | 0x10; ] { }
 
 repinstr: aluinstr is aluinstr & opc = 0x13 & alu_2src_op & alu_2src_pad = 0 [ alu_op = alu_2src_op; ] { }
 
