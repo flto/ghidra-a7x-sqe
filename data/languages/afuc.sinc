@@ -461,13 +461,12 @@ aluinstr: "max" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0b
 }
 
 aluinstr: "cmp" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x0d {
-  local tmp:4 = 0x00;
-  if (SRC1 > ALUSRC2) goto <out>;
-  tmp = 0x2b;
-  if (SRC1 == ALUSRC2) goto <out>;
-  tmp = 0x1e;
-  <out>
-  ALUDST = tmp;
+  ALUDST = zext(SRC1 == ALUSRC2) |
+           zext(SRC1 <= ALUSRC2) << 1 |
+           zext(SRC1 <  ALUSRC2) << 2 |
+           zext(SRC1 <= ALUSRC2) << 3 |
+           zext(SRC1 <  ALUSRC2) << 4;
+  #ALUDST = zext(SRC1 == ALUSRC2) * 0b101011 | zext(SRC1 < ALUSRC2) * 0b11110;
 }
 
 aluinstr: "bic" ALUDST, SRC1, ALUSRC2 is ALUDST & SRC1 & ALUSRC2 & alu_op = 0x09 {
