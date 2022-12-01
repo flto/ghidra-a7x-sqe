@@ -34,6 +34,10 @@ define register offset=0x100 size=4 [
   flags # used so far for add/addhi overflow bit (probably also a control reg)
   curdataptr_lo
   curdataptr_hi
+
+  # for delayed branching
+  DELAY_TARGET
+  DELAY_COND
 ];
 
 define register offset=0x110 size=8 [
@@ -62,6 +66,8 @@ define context decodestate
   # the addr-writes and data-writes do
   addrknown = (1, 1)
   alu_op = (2, 6)
+  phase=(7,7)
+  delay_slot=(8,8) noflow
   knownaddr = (32, 63)
   knownaddr_hi = (32, 46)
 ;
@@ -120,6 +126,21 @@ macro writedataptr(curdataptr) {
   curdataptr_lo = newcurdataptr[0,32];
   curdataptr_hi = newcurdataptr[32,32];
 }
+
+:^instruction is phase=0 & delay_slot=1 & instruction [phase=1;] {
+  local delay_target = DELAY_TARGET;
+  local delay_cond = DELAY_COND;
+  build instruction;
+  if (delay_cond == 0) goto <done>;
+  goto [delay_target];
+  <done>
+}
+
+:^instruction is phase=0 & delay_slot=0 & instruction [phase=1;] {
+  build instruction;
+}
+
+with : phase=1 {
 
 # -- Destinations ---
 
@@ -607,37 +628,41 @@ repinstr: "load" ALUICNTLDST, LDSTADDR is ALUICNTLDST & LDSTADDR & opc = 0x16 {
 # --- Control-flow instructions ---
 
 branch_dest: reloc is branch_ioff [ reloc = branch_ioff * 4 + inst_start; ] {
-  export *:8 reloc;
+  export *:4 reloc;
 }
 
-:brne SRC1, branch_imm, branch_dest is SRC1 & branch_imm & branch_dest & opc_r = 0x30 {
+macro delayed_branch(cond, dest) {
+  DELAY_COND = zext(cond);
+  DELAY_TARGET = &dest;
+}
+
+:brne SRC1, branch_imm, branch_dest is SRC1 & branch_imm & branch_dest & opc_r = 0x30
+[delay_slot=1; globalset(inst_next, delay_slot);] {
   local tmp:4 = SRC1;
-  delayslot(1);
-  if (tmp != branch_imm) goto branch_dest;
+  delayed_branch(tmp != branch_imm, branch_dest);
 }
 
-:breq SRC1, branch_imm, branch_dest is SRC1 & branch_imm & branch_dest & opc_r = 0x31 {
+:breq SRC1, branch_imm, branch_dest is SRC1 & branch_imm & branch_dest & opc_r = 0x31
+[delay_slot=1; globalset(inst_next, delay_slot);] {
   local tmp:4 = SRC1;
-  delayslot(1);
-  if (tmp == branch_imm) goto branch_dest;
+  delayed_branch(tmp == branch_imm, branch_dest);
 }
 
-:brne SRC1, "b"^branch_bit, branch_dest is SRC1 & branch_bit & branch_dest & opc_r = 0x32 {
+:brne SRC1, "b"^branch_bit, branch_dest is SRC1 & branch_bit & branch_dest & opc_r = 0x32
+[delay_slot=1; globalset(inst_next, delay_slot);] {
   local tmp:4 = SRC1;
-  delayslot(1);
-  if ((tmp & (1 << branch_bit)) == 0) goto branch_dest;
+  delayed_branch((tmp & (1 << branch_bit)) == 0, branch_dest);
 }
 
-:breq SRC1, "b"^branch_bit, branch_dest is SRC1 & branch_bit & branch_dest & opc_r = 0x33 {
+:breq SRC1, "b"^branch_bit, branch_dest is SRC1 & branch_bit & branch_dest & opc_r = 0x33
+[delay_slot=1; globalset(inst_next, delay_slot);] {
   local tmp:4 = SRC1;
-  delayslot(1);
-  if ((tmp & (1 << branch_bit)) != 0) goto branch_dest;
+  delayed_branch((tmp & (1 << branch_bit)) != 0, branch_dest);
 }
 
-:jump branch_dest is branch_dest & src1 = 0 & branch_bit = 0 & opc_r = 0x32 {
-  delayslot(1);
-  goto branch_dest;
-}
+#:jump branch_dest is branch_dest & src1 = 0 & branch_bit = 0 & opc_r = 0x32 {
+#  delayed_branch(1, branch_dest);
+#}
 
 # + 4 for zero stripped off by kernel
 call_dest: reloc is call_off [ reloc = call_off * 4 + 4; ] {
@@ -647,14 +672,14 @@ call_dest: reloc is call_off [ reloc = call_off * 4 + 4; ] {
 :call call_dest is call_dest & opc_r = 0x35 {
   *[retaddrs]:4 sp = inst_next + 4;
   sp = sp + 4;
-  delayslot(1);
+  #delayslot(1);
   call call_dest;
 }
 
 :ret is opc_r = 0x34 & pad = 0 {
   sp = sp - 4;
   local tmp:4 = *[retaddrs] sp;
-  delayslot(1);
+  #delayslot(1);
   return [tmp];
 }
 
@@ -662,7 +687,7 @@ call_dest: reloc is call_off [ reloc = call_off * 4 + 4; ] {
 define pcodeop iret;
 
 :iret is opc_r = 0x34 & pad = 0x2000000 {
-  delayslot(1);
+  #delayslot(1);
   local tmp:8 = iret();
   return [tmp];
 }
@@ -671,7 +696,7 @@ define pcodeop waitin;
 
 :waitin is opc_r = 0x36 & pad = 0x0 {
   local tmp:8 = waitin();
-  delayslot(1);
+  #delayslot(1);
   return [tmp];
 }
 
@@ -702,7 +727,7 @@ define pcodeop unk38;
 # when not safe?
 :unk38 call_dest is call_dest & opc_r = 0x38 {
   local tmp:1 = unk38();
-  delayslot(1);
+  #delayslot(1);
   if (tmp) goto call_dest;
 }
 @endif
@@ -719,3 +744,4 @@ define pcodeop badcode;
 
 :badcode is instr_bits = 0xfbadc0de { badcode(); goto inst_start; }
 
+}
